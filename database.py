@@ -259,7 +259,7 @@ def get_player_id(puuid):
     """
     with Session() as session:
         player = session.query(Player).filter(Player.puuid == puuid).first()
-        return player.id
+        return player.id if player else None
 
 
 @safe_query
@@ -307,7 +307,7 @@ def update_player_if_exists(player, matchDate):
             session.query(Player).filter(Player.puuid == player["puuid"]).first()
         )
         if not player_exists:
-            return None
+            return False
 
         if player_exists.lastMatchFetch > matchDate:
             # Update the player's information
@@ -376,6 +376,8 @@ def insert_starting_point(player, region):
         player (dict): Dictionary with simple player data.
         region (string): Region where the player will be inserted.
     """
+    if get_player_id(player["puuid"]) != None:
+        return
     new_player = {
         "puuid": player["puuid"],
         "profileIconId": player["profileIconId"],
