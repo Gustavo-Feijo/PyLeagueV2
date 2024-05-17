@@ -75,19 +75,24 @@ def sub_region_fetching(region):
                 "IRON",
             ]:
                 print(f"Starting fetching on tier {tier} for region {region}")
-                for division in ["I", "II", "III", "IV"]:
-                    while True:
-                        data = fetcher.get_rank_page(
-                            tier=tier, division=division, page=page
-                        )
-                        # Verify if the division wasn't fully fetched.
-                        # If it was, then go to the next iteration.
-                        if len(data["entries"]) > 0:
-                            treated_rating = get_rating_list(data, region)
-                            insert_player_rating_list(treated_rating)
-                            page += 1
-                        else:
-                            break
+                try:
+                    for division in ["I", "II", "III", "IV"]:
+                        while True:
+                            data = fetcher.get_rank_page(
+                                tier=tier, division=division, page=page
+                            )
+                            # Verify if the division wasn't fully fetched.
+                            # If it was, then go to the next iteration.
+                            if len(data) > 0:
+                                treated_rating = get_rating_list(data, region)
+                                insert_player_rating_list(treated_rating)
+                                page += 1
+                            else:
+                                break
+                except Exception as e:
+                    raise Exception(
+                        f"Error occurred while fetching player rating list: {e}"
+                    )
             print(
                 f"Rating fetching finished for region {region}. Sleeping for 30 minutes."
             )
@@ -178,7 +183,7 @@ def main_region_fetching(region_list: dict):
                     player_exists = update_player_if_exists(
                         player, m_info["matchStart"]
                     )
-                    if player_exists is not None:
+                    if player_exists == True:
                         continue
                     new_p_info.append(player)
                 # Insert all the data in the database.
