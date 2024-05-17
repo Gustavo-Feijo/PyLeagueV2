@@ -64,7 +64,6 @@ def sub_region_fetching(region):
                     )
             # Get the data from each division and tier.
             # Nested loop for getting all divisions and tiers. Page variable is used to keep track of the current page.
-            page = 1
             for tier in [
                 "DIAMOND",
                 "EMERALD",
@@ -77,6 +76,7 @@ def sub_region_fetching(region):
                 print(f"Starting fetching on tier {tier} for region {region}")
                 try:
                     for division in ["I", "II", "III", "IV"]:
+                        page = 1
                         while True:
                             data = fetcher.get_rank_page(
                                 tier=tier, division=division, page=page
