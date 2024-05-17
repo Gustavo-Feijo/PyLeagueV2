@@ -14,7 +14,6 @@ from sqlalchemy import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import declarative_base, relationship, scoped_session, sessionmaker
 from sqlalchemy.sql import func
-from sqlalchemy import and_
 
 # Load the dotenv and create a logger
 load_dotenv("./credentials.env")
