@@ -2,6 +2,7 @@ import requests
 import os
 import time
 from dotenv import load_dotenv
+from requests.exceptions import RequestException
 
 # Load the environment variables.
 load_dotenv("./credentials.env")
@@ -9,7 +10,7 @@ load_dotenv("./credentials.env")
 """
 There are three main classes utilized in this file.
 BaseFetcher has the fetch method and initializes the session.
-Inside both region fetchers a instance of BaseFetcher is created, the fetch method is copied to a method of same name on the new class.
+Inside both region fetchers a instance of BaseFetcher is created.
 Each class has several methods to fetch data from the RiotAPI.
 The classes don't comunicate between each other.
 Each class instance has it's own rate limit. (Unless two classes are created for the same region)
@@ -22,8 +23,9 @@ class BaseFetcher:
     """
 
     # Class attributes.
-    def __init__(self):
+    def __init__(self, region):
         self.api_key = os.getenv("API_KEY")
+        self.region = region
         self.retry_timer = 0
         self.retry_count = 0
         self.session = requests.Session()
@@ -31,24 +33,41 @@ class BaseFetcher:
     def fetch(self, url: str):
         """Fetch data from the API with handling of rate limiting."""
         while True:
+            # Verify if the rate limit was reached, if it was, then sleep until requests are available again.
             if self.retry_timer > 0:
                 time.sleep(self.retry_timer)
                 self.retry_timer = 0
-            response = self.session.get(
-                url, headers={"X-Riot-Token": f"{self.api_key}"}
-            )
-            if response.status_code == 200:
-                self.retry_count = 0
-                return response.json()
-            elif response.status_code == 429:
-                self.retry_timer = int(response.headers.get("Retry-After", 1))
-                print(
-                    f"Rate limit exceeded for region {self.region}. Retrying after {self.retry_timer} seconds."
+            # Try block to treating temporary connection failures.
+            try:
+                # Get the response from the server.
+                response = self.session.get(
+                    url, headers={"X-Riot-Token": f"{self.api_key}"}
                 )
-            elif self.retry_counter >= 2:
-                raise Exception(f"Error: {response.status_code} response from {url}")
-            else:
-                self.retry_counter += 1
+                # Verify if the response is valid, then reset the retry counter and return it as json.
+                if response.status_code == 200:
+                    self.retry_count = 0
+                    return response.json()
+                # If the response is invalid and related to rate limit, then set the retry timer to be used for sleep.
+                elif response.status_code == 429:
+                    self.retry_timer = int(response.headers.get("Retry-After", 1))
+                    print(
+                        f"Rate limit exceeded for region {self.region}. Retrying after {self.retry_timer} seconds."
+                    )
+                # If any other error occurs and the retry counter has reached it's limit, then raise the error.
+                elif self.retry_count >= 2:
+                    raise Exception(
+                        f"Error: {response.status_code} response from {url}"
+                    )
+                # Else, just increase the retry count.
+                else:
+                    self.retry_count += 1
+            except RequestException as e:
+                # If a different error occured, print the error, wait one second and continue.
+                print(f"Request failed: {e}. Retrying...")
+                time.sleep(1)  # Wait before retrying
+                continue
+            except Exception as e:
+                raise e
 
     def close(self):
         """Close the session."""
@@ -64,8 +83,7 @@ class SubRegionFetcher:
 
     # Instance of the class BaseFetcher.
     def __init__(self, region: str):
-        self.baseFetcher = BaseFetcher()
-        self.region = region
+        self.baseFetcher = BaseFetcher(region)
 
     # Method for fetching a given rank page.
     def get_rank_page(self, tier: str, division: str, page: int):
@@ -80,7 +98,7 @@ class SubRegionFetcher:
         Returns:
             List[Dict]: Returns a list of dictionarys containing the players information..
         """
-        url = f"https://{self.region}.api.riotgames.com/lol/league/v4/entries/RANKED_SOLO_5x5/{tier}/{division}?page={page}"
+        url = f"https://{self.baseFetcher.region}.api.riotgames.com/lol/league/v4/entries/RANKED_SOLO_5x5/{tier}/{division}?page={page}"
         try:
             return self.baseFetcher.fetch(url)
         except Exception as e:
@@ -96,7 +114,7 @@ class SubRegionFetcher:
         Returns:
             Dict: Returns the list of higher ranks.
         """
-        url = f"https://{self.region}.api.riotgames.com/lol/league/v4/{rank}leagues/by-queue/RANKED_SOLO_5x5"
+        url = f"https://{self.baseFetcher.region}.api.riotgames.com/lol/league/v4/{rank}leagues/by-queue/RANKED_SOLO_5x5"
         try:
             return self.baseFetcher.fetch(url)
         except Exception as e:
@@ -113,7 +131,7 @@ class SubRegionFetcher:
         Returns:
             Dict: Dictionary containing the player's information.
         """
-        url = f"https://{self.region}.api.riotgames.com/lol/summoner/v4/summoners/{summoner_id}"
+        url = f"https://{self.baseFetcher.region}.api.riotgames.com/lol/summoner/v4/summoners/{summoner_id}"
         try:
             return self.baseFetcher.fetch(url)
         except Exception as e:
@@ -128,8 +146,7 @@ class MainRegionFetcher:
 
     # Instance of the class BaseFetcher.
     def __init__(self, region: str):
-        self.baseFetcher = BaseFetcher()
-        self.region = region
+        self.baseFetcher = BaseFetcher(region)
 
     # Function to get a match list from a given player puuid.
     def get_match_list(self, puuid, start_date, start_value):
@@ -142,7 +159,7 @@ class MainRegionFetcher:
             List[String]: Returns a list of the match ids.
         """
         timestamp = int(start_date.timestamp())
-        url = f"https://{self.region}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?startTime={timestamp}&queue=420&start={start_value}&count=100"
+        url = f"https://{self.baseFetcher.region}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?startTime={timestamp}&queue=420&start={start_value}&count=100"
         try:
             return self.baseFetcher.fetch(url)
         except Exception as e:
@@ -158,7 +175,7 @@ class MainRegionFetcher:
         Returns:
             Dict: Returns a dictionary with all the data from the match.
         """
-        url = f"https://{self.region}.api.riotgames.com/lol/match/v5/matches/{match_id}"
+        url = f"https://{self.baseFetcher.region}.api.riotgames.com/lol/match/v5/matches/{match_id}"
         try:
             return self.baseFetcher.fetch(url)
         except Exception as e:
@@ -174,7 +191,7 @@ class MainRegionFetcher:
         Returns:
             Dict: Returns a dictionary with all the timeline data from the match.
         """
-        url = f"https://{self.region}.api.riotgames.com/lol/match/v5/matches/{match_id}/timeline"
+        url = f"https://{self.baseFetcher.region}.api.riotgames.com/lol/match/v5/matches/{match_id}/timeline"
         try:
             return self.baseFetcher.fetch(url)
         except Exception as e:
